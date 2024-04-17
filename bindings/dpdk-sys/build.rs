@@ -331,6 +331,9 @@ impl State {
 
         // Heuristically remove platform-specific headers
         let platform_set = vec!["x86", "x86_64", "x64", "arm", "arm32", "arm64", "amd64"];
+
+        // Remove blacklist headers
+        let blacklist_prefix = vec!["rte_acc_"];
         let mut name_set = vec![];
         for file in &headers {
             let file_name = String::from(file.file_stem().unwrap().to_str().unwrap());
@@ -346,6 +349,11 @@ impl State {
             }
             for platform in &platform_set {
                 if file_name.ends_with(&format!("_{}", platform)) {
+                    continue 'outer;
+                }
+            }
+            for black in &blacklist_prefix {
+                if file_name.starts_with(black) {
                     continue 'outer;
                 }
             }
@@ -706,7 +714,7 @@ impl State {
         for link in &self.dpdk_links {
             let libname = link.file_name().unwrap().to_str().unwrap();
 
-            if libname == "librte_pmd_mlx5.a" {
+            if libname == "librte_net_mlx5.a" {
                 linkable_whitelist.push("mlx5_set_cksum_table".to_string());
                 linkable_extern_def_list.push("void mlx5_set_cksum_table(void)".to_string());
                 break;
@@ -775,9 +783,12 @@ impl State {
             .clang_arg(dpdk_config_path.to_str().unwrap())
             .clang_arg("-march=native")
             .clang_arg("-Wno-everything")
-            .rustfmt_bindings(true)
             .opaque_type("max_align_t")
             .opaque_type("rte_event.*")
+            .opaque_type("vmbus_bufring")
+            .opaque_type("rte_avp_desc")
+            .opaque_type("rte_.*_hdr")
+            .opaque_type("rte_arp_ipv4")
             .generate()
             .unwrap()
             .write_to_file(target_path)
@@ -883,7 +894,7 @@ impl State {
                 let link_name = &capture[1];
                 if link_name == "dpdk" {
                     continue;
-                } else if link_name == "rte_pmd_mlx5" {
+                } else if link_name == "rte_net_mlx5" {
                     // MLX5 PMD requires additional liniking of two libraries
                     println!("cargo:rustc-link-lib=ibverbs");
                     println!("cargo:rustc-link-lib=mlx5");
@@ -912,3 +923,4 @@ fn main() {
     state.generate_lib_rs();
     state.compile();
 }
+
